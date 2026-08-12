@@ -1,0 +1,8 @@
+{
+  "Acme AI Notetaker": {"status": "public", "soc2_type2": "2025-08", "iso27001": false,
+                        "dpa": false, "subprocessor_list": false, "pentest": true},
+  "BudgetView":        {"status": "public", "soc2_type2": "2026-01", "iso27001": true,
+                        "dpa": true, "subprocessor_list": true, "sso": true},
+  "ColorPicker Web":   {"status": "none"},
+  "DataCruncher":      {"status": "gated", "note": "NDA required to view reports"}
+}
