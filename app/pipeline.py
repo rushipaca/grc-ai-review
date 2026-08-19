@@ -31,7 +31,12 @@ def extract(text: str) -> RequestFields:
         config={
             "system_instruction": (
                 "Extract the fields from this software request. "
-                "Use null or an empty list when a field is not stated. Never guess."
+                "The 'vendor' field is the company that makes the named software. "
+                "You MUST fill in vendor by identifying the maker of the software "
+                "(e.g. 'Steam' -> 'Valve', 'Slack' -> 'Slack Technologies', "
+                "'Excel' -> 'Microsoft'). Only leave vendor null if the software "
+                "name is unrecognizable. For data_types, uses_ai, and integrations, "
+                "use an empty list or null when not stated - do not guess those."
             ),
             "response_mime_type": "application/json",
             "response_schema": RequestFields,
@@ -40,7 +45,7 @@ def extract(text: str) -> RequestFields:
     return r.parsed
 
 # The two-bucket "missing" logic — intake fields only
-REQUIRED = ["software_name", "vendor", "business_purpose",
+REQUIRED = ["software_name", "business_purpose",
             "data_types", "uses_ai", "integrations"]
 
 def still_needed(f: RequestFields) -> list:
