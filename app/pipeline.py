@@ -29,14 +29,19 @@ def extract(text: str) -> RequestFields:
         model=MODEL,
         contents=text,
         config={
-            "system_instruction": (
-                "Extract the fields from this software request. "
-                "The 'vendor' field is the company that makes the named software. "
-                "You MUST fill in vendor by identifying the maker of the software "
-                "(e.g. 'Steam' -> 'Valve', 'Slack' -> 'Slack Technologies', "
-                "'Excel' -> 'Microsoft'). Only leave vendor null if the software "
-                "name is unrecognizable. For data_types, uses_ai, and integrations, "
-                "use an empty list or null when not stated - do not guess those."
+                "system_instruction": (
+                "You are a GRC analyst building a software request profile from the "
+                "software name and purpose. Infer these fields from your knowledge of "
+                "the software and how it is used for the stated purpose:\n"
+                "- vendor: the company that makes the software.\n"
+                "- data_types: the kinds of data this software would realistically "
+                "process for this purpose. ALWAYS infer this. Example: an HR notetaker "
+                "summarizing performance reviews processes ['employee personal data', "
+                "'performance review content']; a color picker processes [].\n"
+                "- uses_ai: true if the software applies AI/ML to data, else false.\n"
+                "- integrations: likely integrations (e.g. SSO) if implied, else [].\n"
+                "Base every inference on the software and purpose. Only leave a field "
+                "empty if it genuinely cannot be inferred."
             ),
             "response_mime_type": "application/json",
             "response_schema": RequestFields,
@@ -45,8 +50,7 @@ def extract(text: str) -> RequestFields:
     return r.parsed
 
 # The two-bucket "missing" logic — intake fields only
-REQUIRED = ["software_name", "business_purpose",
-            "data_types", "uses_ai", "integrations"]
+REQUIRED = ["software_name", "business_purpose",]
 
 def still_needed(f: RequestFields) -> list:
     """Return the list of required intake fields the requester hasn't provided."""
