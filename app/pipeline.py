@@ -61,18 +61,24 @@ def still_needed(f: RequestFields) -> list:
             missing.append(name)
     return missing
 
-class Assessment(BaseModel):
-    reasons: list[str]            # each reason should cite a control id like [VR-02]
-    missing_documents: list[str]  # vendor docs required but not provided
-    risk_level: Literal["Low", "Medium", "High", "Not Enough Information"]
-    recommended_next_action: str
+class CrossCheck(BaseModel):
+    policy_findings: list[str]     # each cites a control: what it requires + how the request relates
+    missing_documents: list[str]   # required vendor documents not provided
+    reviewer_notes: str            # neutral summary of what the reviewer should verify (NOT a verdict)
 
-SYS = ("You are a GRC assistant. Decide the risk level ONLY from the provided policy "
-       "controls and trust-center findings. Cite control IDs in brackets in each reason, "
-       "e.g. [VR-02]. List any required vendor documents that are missing. Never invent "
-       "controls or reports.")
+SYS = ("You are a GRC analyst assembling information for a human reviewer. Using ONLY "
+       "the provided policy controls and trust-center findings:\n"
+       "- policy_findings: state which controls apply to this request and what each "
+       "requires, citing the control ID in brackets, e.g. '[DC-04] Restricted data "
+       "requires a SOC 2 Type II and a DPA.' Where the request may not meet a "
+       "requirement, note it plainly and cite the control.\n"
+       "- missing_documents: list required vendor documents that the trust center does "
+       "not show as provided.\n"
+       "- reviewer_notes: one neutral sentence on what the reviewer should verify.\n"
+       "Do NOT assign a risk level and do NOT approve or reject. Assemble facts and "
+       "cite policy; the human decides. Never invent controls or reports.")
 
-def classify(f: RequestFields, policy_hits: list, trust: dict) -> Assessment:
+def cross_check(f: RequestFields, policy_hits: list, trust: dict) -> CrossCheck:
     context = "POLICY CONTROLS:\n" + "\n".join(
         f"[{h['control_id']}] {h['text']}" for h in policy_hits)
     context += f"\n\nTRUST CENTER for {f.vendor}: {trust}"
@@ -83,51 +89,44 @@ def classify(f: RequestFields, policy_hits: list, trust: dict) -> Assessment:
         config={
             "system_instruction": SYS,
             "response_mime_type": "application/json",
-            "response_schema": Assessment,
+            "response_schema": CrossCheck,
         },
     )
     return r.parsed
 
 def review(text: str) -> dict:
-    # Step 1: read the request into fields
     f = extract(text)
-
-    # Step 2: check what's missing from the requester
     gaps = still_needed(f)
 
-    # Step 3: if intake is incomplete, stop here -> Not Enough Information
     if gaps:
-        assessment = Assessment(
-            reasons=["Required intake information is missing."],
+        cc = CrossCheck(
+            policy_findings=[],
             missing_documents=[],
-            risk_level="Not Enough Information",
-            recommended_next_action="Ask the requester for: " + ", ".join(gaps),
+            reviewer_notes="Request incomplete — provide a software name and purpose.",
         )
         hits, trust = [], {"status": "not checked"}
     else:
-        # Step 4: search policy + check the vendor, then classify
         hits = search_policy(f"{f.business_purpose} {f.data_types}", k=6)
         trust = check_trust_center(f.vendor)
-        assessment = classify(f, hits, trust)
+        cc = cross_check(f, hits, trust)
 
-    # Step 5: build the mock ticket
     ticket = {
         "id": "SR-AUTO",
         "status": "In Review",
-        "risk_level": assessment.risk_level,
         "software": f.software_name,
         "vendor": f.vendor,
-        "missing_documents": assessment.missing_documents,
-        "next_action": assessment.recommended_next_action,
+        "missing_documents": cc.missing_documents,
+        "notes": cc.reviewer_notes,
     }
     json.dump(ticket, open("store/last_ticket.json", "w"), indent=2)
 
-    # Step 6: return the full five-part packet
     return {
         "summary": f.model_dump(),
         "still_needed": gaps,
         "trust_center": trust,
         "policy_citations": [h["control_id"] for h in hits],
-        "assessment": assessment.model_dump(),
+        "policy_findings": cc.policy_findings,
+        "missing_documents": cc.missing_documents,
+        "reviewer_notes": cc.reviewer_notes,
         "ticket": ticket,
     }

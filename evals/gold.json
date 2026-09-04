@@ -1,0 +1,6 @@
+[
+  {"software": "Acme AI Notetaker", "purpose": "summarize HR performance review meetings", "expected_risk": "High"},
+  {"software": "BudgetView", "purpose": "build finance revenue dashboards from budget data", "expected_risk": "Medium"},
+  {"software": "ColorPicker Web", "purpose": "grab hex color codes for slide design, no login, no company data", "expected_risk": "Low"},
+  {"software": "Trello", "purpose": "track our team's project tasks and deadlines", "expected_risk": "Medium"}
+]
