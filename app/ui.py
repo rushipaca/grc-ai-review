@@ -23,6 +23,13 @@ if st.button("Review request") and software and purpose:
     st.write(f"**Purpose:** {s['business_purpose'] or 'not stated'}")
 
     # ---- Assessment ----
+    
+    # ---- Flags (concrete gaps / risk conditions) ----
+    if out["flags"]:
+        st.subheader("Flags")
+        for flag in out["flags"]:
+            st.warning(flag)
+
     st.subheader("Assessment")
 
     st.markdown("**Internal Policy Cross-Check**")

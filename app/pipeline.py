@@ -8,10 +8,24 @@ from typing import Literal
 from app.rag import search_policy
 from app.trust import check_trust_center
 import json
+import time
+from google.genai import errors as genai_errors
 
 load_dotenv()
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = "gemini-3.6-flash"
+MODEL = "gemini-flash-lite-latest"
+
+def _generate_with_retry(**kwargs):
+    """Call Gemini, retrying on transient 429/503 with backoff."""
+    for attempt in range(4):
+        try:
+            return client.models.generate_content(**kwargs)
+        except genai_errors.APIError as e:
+            code = getattr(e, "code", None)
+            if code in (429, 503) and attempt < 3:
+                time.sleep(2 ** attempt * 5)   # 5s, 10s, 20s
+                continue
+            raise
 
 # The "form" the model must fill in from the request
 class RequestFields(BaseModel):
@@ -25,7 +39,7 @@ class RequestFields(BaseModel):
 
 def extract(text: str) -> RequestFields:
     """Read a plain-English software request and return structured fields."""
-    r = client.models.generate_content(
+    r = _generate_with_retry(
         model=MODEL,
         contents=text,
         config={
@@ -62,20 +76,27 @@ def still_needed(f: RequestFields) -> list:
     return missing
 
 class CrossCheck(BaseModel):
-    policy_findings: list[str]     # each cites a control: what it requires + how the request relates
-    missing_documents: list[str]   # required vendor documents not provided
-    reviewer_notes: str            # neutral summary of what the reviewer should verify (NOT a verdict)
+    policy_findings: list[str]     # applicable controls + what each requires (cited)
+    flags: list[str]               # concrete conditions where the request may NOT meet a cited requirement
+    missing_documents: list[str]   # required vendor documents not shown as provided
+    reviewer_notes: str            # neutral one-line summary of what to verify (NOT a verdict)
 
 SYS = ("You are a GRC analyst assembling information for a human reviewer. Using ONLY "
        "the provided policy controls and trust-center findings:\n"
-       "- policy_findings: state which controls apply to this request and what each "
-       "requires, citing the control ID in brackets, e.g. '[DC-04] Restricted data "
-       "requires a SOC 2 Type II and a DPA.' Where the request may not meet a "
-       "requirement, note it plainly and cite the control.\n"
-       "- missing_documents: list required vendor documents that the trust center does "
-       "not show as provided.\n"
+       "- policy_findings: state which controls apply and what each requires, citing "
+       "the control ID in brackets, e.g. '[DC-04] Restricted data requires a SOC 2 "
+       "Type II and a DPA.'\n"
+       "- flags: list concrete conditions where the request may NOT meet a cited "
+       "requirement, or where a policy-defined risk condition is present. Each flag "
+       "must cite the control(s) it relates to and state the specific gap, e.g. "
+       "'[AIU-03] AI is applied to employee personal data, which triggers a mandatory "
+       "Legal review that is not yet recorded' or '[VR-02] A DPA is required but the "
+       "vendor's trust center does not list one.' If nothing is out of line, return an "
+       "empty list.\n"
+       "- missing_documents: required vendor documents the trust center does not show "
+       "as provided.\n"
        "- reviewer_notes: one neutral sentence on what the reviewer should verify.\n"
-       "Do NOT assign a risk level and do NOT approve or reject. Assemble facts and "
+       "Do NOT assign a risk level and do NOT approve or reject. Flag conditions and "
        "cite policy; the human decides. Never invent controls or reports.")
 
 def cross_check(f: RequestFields, policy_hits: list, trust: dict) -> CrossCheck:
@@ -83,7 +104,7 @@ def cross_check(f: RequestFields, policy_hits: list, trust: dict) -> CrossCheck:
         f"[{h['control_id']}] {h['text']}" for h in policy_hits)
     context += f"\n\nTRUST CENTER for {f.vendor}: {trust}"
     context += f"\n\nREQUEST FIELDS: {f.model_dump()}"
-    r = client.models.generate_content(
+    r = _generate_with_retry(
         model=MODEL,
         contents=context,
         config={
@@ -101,6 +122,7 @@ def review(text: str) -> dict:
     if gaps:
         cc = CrossCheck(
             policy_findings=[],
+            flags=[],
             missing_documents=[],
             reviewer_notes="Request incomplete — provide a software name and purpose.",
         )
@@ -115,6 +137,7 @@ def review(text: str) -> dict:
         "status": "In Review",
         "software": f.software_name,
         "vendor": f.vendor,
+        "flags": cc.flags,
         "missing_documents": cc.missing_documents,
         "notes": cc.reviewer_notes,
     }
@@ -126,6 +149,7 @@ def review(text: str) -> dict:
         "trust_center": trust,
         "policy_citations": [h["control_id"] for h in hits],
         "policy_findings": cc.policy_findings,
+        "flags": cc.flags,
         "missing_documents": cc.missing_documents,
         "reviewer_notes": cc.reviewer_notes,
         "ticket": ticket,
