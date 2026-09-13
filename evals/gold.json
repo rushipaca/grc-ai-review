@@ -1,6 +1,21 @@
 [
-  {"software": "Acme AI Notetaker", "purpose": "summarize HR performance review meetings", "expected_risk": "High"},
-  {"software": "BudgetView", "purpose": "build finance revenue dashboards from budget data", "expected_risk": "Medium"},
-  {"software": "ColorPicker Web", "purpose": "grab hex color codes for slide design, no login, no company data", "expected_risk": "Low"},
-  {"software": "Trello", "purpose": "track our team's project tasks and deadlines", "expected_risk": "Medium"}
+  {"software": "Otter.ai",
+   "purpose": "transcribe and summarize HR performance review meetings",
+   "expected_controls": ["DC-04", "AIU-03"]},
+
+  {"software": "Salesforce",
+   "purpose": "manage customer accounts and sales pipeline data",
+   "expected_controls": ["DC-04", "VR-01"]},
+
+  {"software": "Notion",
+   "purpose": "internal team wiki and meeting notes",
+   "expected_controls": ["DC-03", "SSR-01"]},
+
+  {"software": "Adobe Acrobat",
+   "purpose": "edit and view work PDF documents",
+   "expected_controls": ["DC-02"]},
+
+  {"software": "Coolors",
+   "purpose": "generate color palettes for slides, no login, no company data",
+   "expected_controls": ["DC-01"]}
 ]
